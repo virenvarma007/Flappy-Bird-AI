@@ -11,6 +11,7 @@ pygame.font.init()
 
 WIN_WIDTH = 600
 WIN_HEIGHT = 800
+gen = 0
 
 Bird_IMGS = [pygame.transform.scale2x(pygame.image.load(os.path.join("imgs", "bird1.png"))), pygame.transform.scale2x(
     pygame.image.load(os.path.join("imgs", "bird1.png"))), pygame.transform.scale2x(pygame.image.load(os.path.join("imgs", "bird1.png")))]
@@ -107,6 +108,7 @@ class Pipe:
         self.gap = pgap
         self.top = 0
         self.bottom = 0
+        self.has_collided = False
         self.PIPE_TOP = pygame.transform.flip(PIPE_IMG, False, True)
         self.PIPE_BOTTOM = PIPE_IMG
         self.passed = False
@@ -166,13 +168,16 @@ class Base:
         win.blit(self.IMG, (self.x2, self.y))
 
 
-def draw_window(win, bird, pipes, base, score, fitness):
+def draw_window(win, bird, pipes, base, score, fitness, gen):
     win.blit(BG_IMG, (0, 0))
     for pipe in pipes:
         pipe.draw(win)
 
     text1 = STAT_FONT.render("Score: " + str(score), 1, (255, 255, 255))
     win.blit(text1, (WIN_WIDTH - 10 - text1.get_width(), 10))
+
+    text3 = STAT_FONT.render("Generation: " + str(gen), 1, (255, 255, 255))
+    win.blit(text3, (WIN_WIDTH - 10 - text3.get_width(), 40))
 
     round(fitness, 2)
     text2 = STAT_FONT.render("Fitness: " + str(fitness), 1, (255, 255, 255))
@@ -188,6 +193,8 @@ def main(genomes, config):
 
     nets = []
     ge = []
+    global gen
+    gen += 1
     print(len(genomes))
 
     for _, g in genomes:
@@ -203,6 +210,7 @@ def main(genomes, config):
     bird = Bird(230, 350)
     base = Base(730)
     pipes = [Pipe(loc, pgap, velo, nnheight)]
+    p_width = pipes[0].PIPE_TOP.get_width()
     win = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
     clock = pygame.time.Clock()
     nnheight = random.randrange(50, 450)
@@ -215,7 +223,7 @@ def main(genomes, config):
 
     run = True
     num = 0
-    while run == True and num <= 1:
+    while run == True:
         clock.tick(30)
         add_pipe = False
         rem = []
@@ -248,15 +256,16 @@ def main(genomes, config):
             if not pipe.passed and pipe.x < bird.x:
                 pipe.passed = True
                 add_pipe = True
-            if pipe.collide(bird):
-                ge[num].fitness += 100
+            if pipe.collide(bird) and pipe.has_collided == False:
+                ge[num].fitness += 100*score/10
+                pipe.has_collided = True
                 continue
 
         pipe_ind = 0
         if len(pipes) > 0 and bird.x > pipes[0].x + pipes[0].PIPE_TOP.get_width():
-            pipe_ind = 1
+            pipe_ind = len(pipes)-1
 
-        if add_pipe:
+        if add_pipe == True and len(pipes) <= 2:
             score += 1
 
             # ge[0].fitness -= 5"
@@ -288,23 +297,30 @@ def main(genomes, config):
                 velo = 2
             # pipe height
             nnheight = 50 + 400 * output[3]
+            # SO THAT NO TWO PIPES CLASH, ratio of distances to cover with velocity
+            if velo > pipes[pipe_ind].vel*((500+p_width)/(230+p_width)):
+                velo = pipes[pipe_ind].vel*((500+p_width)/(230+p_width))
 
             pipes.append(Pipe(int(loc), int(pgap), int(velo), int(nnheight)))
 
         for r in rem:
             pipes.remove(r)
 
+        draw_window(win, bird, pipes, base, score, ge[num].fitness, gen)
+
         if bird.y + bird.img.get_height() > 730 or bird.y + bird.img.get_height() < 0:
             ge[num].fitness += 30
             #ge[1].fitness += 30
-            run = False
+            #run = False
             # break
         if(score > 30):
-            run = False
             score = 0
-            num = num + 1
+            nets.pop(num)
+            ge.pop(num)
         base.move()
-        draw_window(win, bird, pipes, base, score, ge[num].fitness)
+        if len(nets) == 0:
+            run = False
+            break
 
     # pygame.quit()
     # sys.exit()
@@ -320,11 +336,10 @@ def run(config):
     stats = neat.StatisticsReporter()
     p.add_reporter(stats)
 
-    winner = p.run(main, 1)  # Here 50 means the number of generations
+    winner = p.run(main, 10)  # Here 50 means the number of generations
 
 
 if __name__ == "__main__":
     local_dir = os.path.dirname(__file__)
     config_path = os.path.join(local_dir, "config-feedforward - 2.txt")
     run(config_path)
-
