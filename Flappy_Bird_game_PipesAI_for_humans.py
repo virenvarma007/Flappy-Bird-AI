@@ -11,6 +11,7 @@ pygame.font.init()
 
 WIN_WIDTH = 600
 WIN_HEIGHT = 800
+gen = 0
 
 Bird_IMGS = [pygame.transform.scale2x(pygame.image.load(os.path.join("imgs", "bird1.png"))), pygame.transform.scale2x(
     pygame.image.load(os.path.join("imgs", "bird1.png"))), pygame.transform.scale2x(pygame.image.load(os.path.join("imgs", "bird1.png")))]
@@ -100,18 +101,14 @@ class Pipe:
     VEL = 5
 
     def __init__(self, x, pgap, velo, nnheight):
-        if x > 500:
-            self.x = x
-        else:
-            self.x = 500
+
+        self.x = x
         self.height = 0
         self.vel = velo
-        if pgap < 200:
-            self.gap = self.GAP
-        else:
-            self.gap = pgap
+        self.gap = pgap
         self.top = 0
         self.bottom = 0
+        self.has_collided = False
         self.PIPE_TOP = pygame.transform.flip(PIPE_IMG, False, True)
         self.PIPE_BOTTOM = PIPE_IMG
         self.passed = False
@@ -176,8 +173,8 @@ def draw_window(win, bird, pipes, base, score):
     for pipe in pipes:
         pipe.draw(win)
 
-    text = STAT_FONT.render("Score: " + str(score), 1, (255, 255, 255))
-    win.blit(text, (WIN_WIDTH - 10 - text.get_width(), 10))
+    text1 = STAT_FONT.render("Score: " + str(score), 1, (255, 255, 255))
+    win.blit(text1, (WIN_WIDTH - 10 - text1.get_width(), 10))
 
     base.draw(win)
 
@@ -185,17 +182,7 @@ def draw_window(win, bird, pipes, base, score):
     pygame.display.update()
 
 
-def main(genomes, config):
-
-    nets = []
-    ge = []
-    print(len(genomes))
-
-    for _, g in genomes:
-        net = neat.nn.FeedForwardNetwork.create(g, config)
-        nets.append(net)
-        g.fitness = 0
-        ge.append(g)
+def main():
 
     loc = 700
     pgap = 200
@@ -204,20 +191,20 @@ def main(genomes, config):
     bird = Bird(230, 350)
     base = Base(730)
     pipes = [Pipe(loc, pgap, velo, nnheight)]
+    p_width = pipes[0].PIPE_TOP.get_width()
     win = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
     clock = pygame.time.Clock()
-    loc = 700
-    pgap = 200
-    velo = 5
     nnheight = random.randrange(50, 450)
     with open('best.pickle', 'rb') as f:
         model = pickle.load(f)
 
+    with open('pipesAI.pickle', 'rb') as p:
+        pipesAI = pickle.load(p)
     score = 0
-    once = 0
 
     run = True
-    while run:
+    while run == True:
+
         clock.tick(30)
         add_pipe = False
         rem = []
@@ -227,21 +214,15 @@ def main(genomes, config):
             if event.type == pygame.QUIT:
                 run = False
 
-        """pipe_ind = 0
+        pipe_ind = 0
         if len(pipes) > 1 and bird.x > pipes[0].x + pipes[0].PIPE_TOP.get_width():
             pipe_ind = 1
 
-        output = model.activate((bird.y, abs(
-            bird.y - pipes[pipe_ind].height), abs(bird.y + pipes[pipe_ind].bottom)))
-
-        if output[0] > 0.5:
-            bird.jump()"""
-
         if event.type == KEYDOWN and (event.key == K_SPACE or event.key == K_UP):
             bird.jump()
+
         for pipe in pipes:
             if pipe.collide(bird):
-                ge[0].fitness += 100
                 run = False
                 # break
             if pipe.x + pipe.PIPE_TOP.get_width() < 0:
@@ -254,55 +235,54 @@ def main(genomes, config):
 
         pipe_ind = 0
         if len(pipes) > 0 and bird.x > pipes[0].x + pipes[0].PIPE_TOP.get_width():
-            pipe_ind = len(pipes) - 1
+            pipe_ind = len(pipes)-1
 
-        if add_pipe:
+        if add_pipe == True and len(pipes) <= 2:
             score += 1
 
-            ge[0].fitness -= 5
-            output = nets[0].activate((bird.y, abs(
+            # ge[0].fitness -= 5"
+
+            output = pipesAI.activate((bird.y, abs(
                 bird.y - pipes[pipe_ind].height), abs(bird.y + pipes[pipe_ind].bottom)))
             # pipe adding location 500-700
             loc = 500 + 200*output[0]
+            if(loc > 700):
+                loc = 700
+            elif(loc < 500):
+                loc = 500
             # pipe gap
             pgap = 150 + 350*output[1]
+            if pgap > 500:
+                pgap = 500
+            elif pgap < 150:
+                pgap = 150
             # pipe velocity
-            velo = 2 + 8*output[2]
+            velo = 4 + 8*output[2]
+            if velo > 10:
+                velo = 10
+            elif velo < 2:
+                velo = 2
             # pipe height
             nnheight = 50 + 400 * output[3]
+            # SO THAT NO TWO PIPES CLASH, ratio of distances to cover with velocity
+            if velo > pipes[pipe_ind].vel*((500+p_width)/(230+p_width)):
+                velo = pipes[pipe_ind].vel*((500+p_width)/(230+p_width))
 
-            pipes.append(Pipe(loc, pgap, velo, nnheight))
+            pipes.append(Pipe(int(loc), int(pgap),
+                              int(velo), int(nnheight)))
 
         for r in rem:
             pipes.remove(r)
 
-        if bird.y + bird.img.get_height() > 730 or bird.y + bird.img.get_height() < 0:
-            ge[0].fitness += 30
-            pass
-            #ge[1].fitness += 30
-            #run = False
-            # break
-        base.move()
         draw_window(win, bird, pipes, base, score)
 
+        if bird.y + bird.img.get_height() > 730 or bird.y + bird.img.get_height() < 0:
+            run = False
+        base.move()
+
     # pygame.quit()
-    sys.exit()
-
-
-def run(config):
-    config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction,
-                                neat.DefaultSpeciesSet, neat.DefaultStagnation, config)
-
-    p = neat.Population(config)
-
-    p.add_reporter(neat.StdOutReporter(True))
-    stats = neat.StatisticsReporter()
-    p.add_reporter(stats)
-
-    winner = p.run(main, 50)  # Here 50 means the number of generations
+    # sys.exit()
 
 
 if __name__ == "__main__":
-    local_dir = os.path.dirname(__file__)
-    config_path = os.path.join(local_dir, "config-feedforward - 2.txt")
-    run(config_path)
+    main()
