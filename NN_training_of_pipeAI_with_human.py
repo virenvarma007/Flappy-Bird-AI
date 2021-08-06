@@ -240,10 +240,7 @@ def main(genomes, config):
         if len(pipes) > 1 and bird.x > pipes[0].x + pipes[0].PIPE_TOP.get_width():
             pipe_ind = 1
 
-        output1 = model.activate((bird.y, abs(
-            bird.y - pipes[pipe_ind].height), abs(bird.y + pipes[pipe_ind].bottom)))
-
-        if output1[0] > 0.5:
+        if event.type == KEYDOWN and (event.key == K_SPACE or event.key == K_UP):
             bird.jump()
             ge[num].fitness -= 2
 
